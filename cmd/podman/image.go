@@ -18,6 +18,7 @@ var (
 		rmImageCommand,
 		saveCommand,
 		tagCommand,
+		treeCommand,
 	}
 
 	imageDescription = "Manage images"

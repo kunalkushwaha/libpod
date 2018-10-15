@@ -1,6 +1,7 @@
 package image
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"github.com/containers/libpod/pkg/util"
 	"github.com/containers/storage"
 	"github.com/containers/storage/pkg/reexec"
+	"github.com/docker/go-units"
 	"github.com/opencontainers/go-digest"
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -1074,4 +1076,63 @@ func (i *Image) Comment(ctx context.Context, manifestType string) (string, error
 		return "", err
 	}
 	return ociv1Img.History[0].Comment, nil
+}
+
+// Tree gets dependencies of image
+func (i *Image) Tree(ctx context.Context) (*bytes.Buffer, error) {
+	treeDepth := 1
+	rootImage := i
+
+	//Traverse to the root(base) image
+	parent, err := i.GetParent()
+	if err != nil {
+		return nil, err
+	}
+
+	for parent != nil {
+		rootImage = parent
+		parent, err = parent.GetParent()
+		if err != nil {
+			break
+		}
+		treeDepth++
+	}
+
+	var buffer bytes.Buffer
+	//Print all subtree(peers) to the depth of input image
+	err = printSubTree(&buffer, rootImage, 0, "└─ ", treeDepth)
+
+	return &buffer, err
+}
+
+func printSubTree(buffer *bytes.Buffer, root *Image, rootSize uint64, prefix string, treeDepth int) error {
+	if treeDepth == 0 {
+		return nil
+	}
+	size, err := root.Size(context.Background())
+	if err != nil {
+		return err
+	}
+	//Size of current layer will be current layer size minus upper layer
+	buffer.WriteString(fmt.Sprintf("%s ID: %s  Tags: %v VirtualSize: %s\n",
+		prefix,
+		root.ID()[:12],
+		root.Names(),
+		units.HumanSizeWithPrecision(float64(*size-rootSize), 4)),
+	)
+
+	children, err := root.GetChildren()
+	if err != nil {
+		return nil
+	}
+
+	for _, child := range children {
+		img, err := root.imageruntime.getImage(child)
+		if err != nil {
+			break
+		}
+		nextPrefix := "  "
+		printSubTree(buffer, img, *size, nextPrefix+prefix, treeDepth-1)
+	}
+	return nil
 }
