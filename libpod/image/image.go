@@ -1,6 +1,7 @@
 package image
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"github.com/containers/libpod/pkg/util"
 	"github.com/containers/storage"
 	"github.com/containers/storage/pkg/reexec"
+	"github.com/docker/go-units"
 	"github.com/opencontainers/go-digest"
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -1075,4 +1077,128 @@ func (i *Image) Comment(ctx context.Context, manifestType string) (string, error
 		return "", err
 	}
 	return ociv1Img.History[0].Comment, nil
+}
+
+//LayerMap host information of layer, which can be mapped to image(s).
+type LayerMap struct {
+	ID       string
+	ParentID string
+	RepoTags []string
+	Size     int64
+}
+
+// Tree gets dependency list in tree format of the image
+func (i *Image) Tree(ctx context.Context, imageName string) (*bytes.Buffer, error) {
+
+	layerMap, err := buildLayerMapFromLayers(ctx, i)
+	if err != nil {
+		return nil, err
+	}
+	layerMap, err = addImageNamesToLayerMap(ctx, i, layerMap)
+	if err != nil {
+		return nil, err
+	}
+
+	repoTag, err := i.MatchRepoTag(imageName)
+	if err != nil {
+		return nil, err
+	}
+	// Get the image top layer and then parse as per parent
+	layer := i.TopLayer()
+	dependencyList := getDependencyList(layerMap, repoTag, layer)
+
+	var buffer bytes.Buffer
+	buildOutputBuffer(&buffer, dependencyList)
+
+	return &buffer, nil
+}
+
+func buildOutputBuffer(buffer *bytes.Buffer, treeStack []LayerMap) {
+
+	prefixSpace := 0
+	for i := len(treeStack) - 1; i >= 0; i-- {
+		for p := 0; p < prefixSpace; p++ {
+			buffer.WriteString(" ")
+		}
+		buffer.WriteString(fmt.Sprintf("└─ ID: %s  Tags: %s VirtualSize: %v\n",
+			treeStack[i].ID[:12],
+			treeStack[i].RepoTags,
+			units.HumanSizeWithPrecision(float64(treeStack[i].Size), 4)),
+		)
+		prefixSpace++
+	}
+}
+
+func buildLayerMapFromLayers(ctx context.Context, i *Image) (map[string]*LayerMap, error) {
+	layerMap := make(map[string]*LayerMap)
+	layers, _ := i.imageruntime.store.Layers()
+	for _, layer := range layers {
+		existingLayer, ok := layerMap[layer.ID]
+		if !ok {
+			layerMap[layer.ID] = &LayerMap{
+				ID:       layer.ID,
+				Size:     layer.CompressedSize,
+				ParentID: layer.Parent,
+			}
+		} else {
+			return nil, fmt.Errorf("duplicate %s layer found in image store", existingLayer.ID)
+		}
+	}
+	return layerMap, nil
+}
+
+func addImageNamesToLayerMap(ctx context.Context, i *Image, layerMap map[string]*LayerMap) (map[string]*LayerMap, error) {
+	images, err := i.imageruntime.GetImages()
+	if err != nil {
+		return nil, errors.Wrapf(err, "error getting images from store")
+	}
+
+	for _, image := range images {
+
+		layerid := image.TopLayer()
+
+		for layerid != "" {
+			existingLayer, ok := layerMap[layerid]
+			if !ok {
+				return nil, fmt.Errorf("layer %s not found ", layerid)
+			}
+			names := image.Names()
+			existingLayer.RepoTags = append(existingLayer.RepoTags, names...)
+			layerid = existingLayer.ParentID
+		}
+	}
+	return layerMap, nil
+}
+
+func getDependencyList(layerMap map[string]*LayerMap, repoTag string, layerID string) []LayerMap {
+	var dependencyList []LayerMap
+	previous := LayerMap{}
+	layerInfo, ok := layerMap[layerID]
+	previous.ID = layerInfo.ID
+	previous.RepoTags = []string{repoTag}
+
+	for ok {
+		appended := false
+
+		if previous.RepoTags[0] == layerInfo.RepoTags[0] {
+			previous.Size = previous.Size + layerInfo.Size
+		} else {
+			appended = true
+			dependencyList = append(dependencyList, previous)
+			previous = LayerMap{}
+			previous.ID = layerInfo.ID
+			previous.Size = previous.Size + layerInfo.Size
+			previous.RepoTags = []string{layerInfo.RepoTags[0]}
+		}
+
+		ok = false
+		if layerInfo.ParentID != "" {
+			layerInfo, ok = layerMap[layerInfo.ParentID]
+		} else if !appended {
+			// Add the last layer, if not yet appended
+			dependencyList = append(dependencyList, previous)
+		}
+	}
+
+	return dependencyList
 }

@@ -24,6 +24,7 @@ The image command allows you to manage images
 | rm       | [podman-rm(1)](podman-rmi.1.md)           | Removes one or more locally stored images.                                     |
 | save     | [podman-save(1)](podman-save.1.md)        | Save an image to docker-archive or oci.                                        |
 | tag      | [podman-tag(1)](podman-tag.1.md)          | Add an additional name to a local image.                                       |
+| tree     | [podman-tree(1)](podman-tree.1.md)        | Show dependent layers of a specified image in tree format                      |
 
 ## SEE ALSO
 podman

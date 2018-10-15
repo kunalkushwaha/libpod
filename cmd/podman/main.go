@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/syslog"
 	"os"
 	"os/exec"
 	"runtime/pprof"
@@ -17,7 +18,6 @@ import (
 	"github.com/sirupsen/logrus"
 	lsyslog "github.com/sirupsen/logrus/hooks/syslog"
 	"github.com/urfave/cli"
-	"log/syslog"
 )
 
 // This is populated by the Makefile from the VERSION file
