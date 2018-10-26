@@ -2,12 +2,12 @@ package libpod
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/boltdb/bolt"
+	"github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -133,6 +133,7 @@ func (s *BoltState) Close() error {
 
 // Refresh clears container and pod states after a reboot
 func (s *BoltState) Refresh() error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !s.valid {
 		return ErrDBClosed
 	}
@@ -473,6 +474,7 @@ func (s *BoltState) RemoveContainer(ctr *Container) error {
 
 // UpdateContainer updates a container's state from the database
 func (s *BoltState) UpdateContainer(ctr *Container) error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !s.valid {
 		return ErrDBClosed
 	}
@@ -541,6 +543,7 @@ func (s *BoltState) UpdateContainer(ctr *Container) error {
 
 // SaveContainer saves a container's current state in the database
 func (s *BoltState) SaveContainer(ctr *Container) error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !s.valid {
 		return ErrDBClosed
 	}
@@ -1103,6 +1106,7 @@ func (s *BoltState) PodContainers(pod *Pod) ([]*Container, error) {
 
 // AddPod adds the given pod to the state.
 func (s *BoltState) AddPod(pod *Pod) error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !s.valid {
 		return ErrDBClosed
 	}
@@ -1512,6 +1516,7 @@ func (s *BoltState) RemoveContainerFromPod(pod *Pod, ctr *Container) error {
 
 // UpdatePod updates a pod's state from the database
 func (s *BoltState) UpdatePod(pod *Pod) error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !s.valid {
 		return ErrDBClosed
 	}
@@ -1569,6 +1574,7 @@ func (s *BoltState) UpdatePod(pod *Pod) error {
 
 // SavePod saves a pod's state to the database
 func (s *BoltState) SavePod(pod *Pod) error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !s.valid {
 		return ErrDBClosed
 	}

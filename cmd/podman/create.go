@@ -539,7 +539,7 @@ func parseCreateOpts(ctx context.Context, c *cli.Context, runtime *libpod.Runtim
 			return nil, errors.Errorf("cannot set port bindings on an existing container network namespace")
 		}
 	}
-
+	fmt.Println(netMode)
 	// USER
 	user := c.String("user")
 	if user == "" {
@@ -807,6 +807,8 @@ func parseCreateOpts(ctx context.Context, c *cli.Context, runtime *libpod.Runtim
 	for _, warning := range warnings {
 		fmt.Fprintln(os.Stderr, warning)
 	}
+
+	fmt.Println(config.Network, config.NetMode)
 	return config, nil
 }
 

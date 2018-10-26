@@ -2,6 +2,7 @@ package createconfig
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -396,6 +397,7 @@ func (c *CreateConfig) GetContainerCreateOptions(runtime *libpod.Runtime) ([]lib
 		if isRootless && len(portBindings) > 0 {
 			return nil, errors.New("port bindings are not yet supported by rootless containers")
 		}
+		fmt.Println("Option passed: ", portBindings, postConfigureNetNS, networks)
 		options = append(options, libpod.WithNetNS(portBindings, postConfigureNetNS, networks))
 	}
 

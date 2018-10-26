@@ -15,12 +15,13 @@
 package libcni
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/json-iterator/go"
 )
 
 type NotFoundError struct {
@@ -41,6 +42,7 @@ func (e NoConfigsFoundError) Error() string {
 }
 
 func ConfFromBytes(bytes []byte) (*NetworkConfig, error) {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	conf := &NetworkConfig{Bytes: bytes}
 	if err := json.Unmarshal(bytes, &conf.Network); err != nil {
 		return nil, fmt.Errorf("error parsing configuration: %s", err)
@@ -60,6 +62,7 @@ func ConfFromFile(filename string) (*NetworkConfig, error) {
 }
 
 func ConfListFromBytes(bytes []byte) (*NetworkConfigList, error) {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	rawList := make(map[string]interface{})
 	if err := json.Unmarshal(bytes, &rawList); err != nil {
 		return nil, fmt.Errorf("error parsing configuration list: %s", err)
@@ -206,6 +209,7 @@ func LoadConfList(dir, name string) (*NetworkConfigList, error) {
 }
 
 func InjectConf(original *NetworkConfig, newValues map[string]interface{}) (*NetworkConfig, error) {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	config := make(map[string]interface{})
 	err := json.Unmarshal(original.Bytes, &config)
 	if err != nil {
@@ -239,7 +243,7 @@ func ConfListFromConf(original *NetworkConfig) (*NetworkConfigList, error) {
 	// This may seem a bit strange, but it's to make the Bytes fields
 	// actually make sense. Otherwise, the generated json is littered with
 	// golang default values.
-
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	rawConfig := make(map[string]interface{})
 	if err := json.Unmarshal(original.Bytes, &rawConfig); err != nil {
 		return nil, err

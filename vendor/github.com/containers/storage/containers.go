@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"github.com/containers/storage/pkg/ioutils"
 	"github.com/containers/storage/pkg/stringid"
 	"github.com/containers/storage/pkg/truncindex"
+	"github.com/json-iterator/go"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 )
@@ -168,6 +168,7 @@ func (r *containerStore) datapath(id, key string) string {
 }
 
 func (r *containerStore) Load() error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	needSave := false
 	rpath := r.containerspath()
 	data, err := ioutil.ReadFile(rpath)
@@ -206,6 +207,7 @@ func (r *containerStore) Load() error {
 }
 
 func (r *containerStore) Save() error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !r.Locked() {
 		return errors.New("container store is not locked")
 	}

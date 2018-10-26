@@ -3,7 +3,6 @@ package libpod
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -24,6 +23,7 @@ import (
 	"github.com/containers/storage/pkg/archive"
 	"github.com/containers/storage/pkg/chrootarchive"
 	"github.com/containers/storage/pkg/mount"
+	"github.com/json-iterator/go"
 	spec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/opencontainers/runtime-tools/generate"
 	"github.com/opencontainers/selinux/go-selinux/label"
@@ -878,6 +878,7 @@ func (c *Container) delete(ctx context.Context) (err error) {
 // the OCI Runtime Specification (which requires them to run
 // post-delete, despite the stage name).
 func (c *Container) postDeleteHooks(ctx context.Context) (err error) {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if c.state.ExtensionStageHooks != nil {
 		extensionHooks, ok := c.state.ExtensionStageHooks["poststop"]
 		if ok {
@@ -1268,6 +1269,7 @@ func (c *Container) saveSpec(spec *spec.Spec) error {
 	// If the OCI spec already exists, we need to replace it
 	// Cannot guarantee some things, e.g. network namespaces, have the same
 	// paths
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	jsonPath := filepath.Join(c.bundlePath(), "config.json")
 	if _, err := os.Stat(jsonPath); err != nil {
 		if !os.IsNotExist(err) {

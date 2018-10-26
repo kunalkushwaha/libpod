@@ -1,11 +1,12 @@
 package storage
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/json-iterator/go"
 
 	"github.com/containers/storage/pkg/ioutils"
 	"github.com/containers/storage/pkg/stringid"
@@ -166,6 +167,7 @@ func (r *imageStore) datapath(id, key string) string {
 }
 
 func (r *imageStore) Load() error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	shouldSave := false
 	rpath := r.imagespath()
 	data, err := ioutil.ReadFile(rpath)
@@ -216,6 +218,7 @@ func (r *imageStore) Load() error {
 }
 
 func (r *imageStore) Save() error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !r.IsReadWrite() {
 		return errors.Wrapf(ErrStoreIsReadOnly, "not allowed to modify the image store at %q", r.imagespath())
 	}

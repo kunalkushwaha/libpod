@@ -15,7 +15,6 @@
 package libcni
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -25,6 +24,7 @@ import (
 	"github.com/containernetworking/cni/pkg/invoke"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/version"
+	"github.com/json-iterator/go"
 )
 
 var (
@@ -195,6 +195,7 @@ func getResultCacheFilePath(netName string, rt *RuntimeConf) string {
 }
 
 func setCachedResult(result types.Result, netName string, rt *RuntimeConf) error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	data, err := json.Marshal(result)
 	if err != nil {
 		return err

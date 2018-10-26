@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,6 +19,7 @@ import (
 	"github.com/containers/storage/pkg/stringid"
 	"github.com/containers/storage/pkg/system"
 	"github.com/containers/storage/pkg/truncindex"
+	"github.com/json-iterator/go"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/selinux/go-selinux/label"
 	"github.com/pkg/errors"
@@ -282,6 +282,7 @@ func (r *layerStore) layerspath() string {
 }
 
 func (r *layerStore) Load() error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	shouldSave := false
 	rpath := r.layerspath()
 	data, err := ioutil.ReadFile(rpath)
@@ -375,6 +376,7 @@ func (r *layerStore) Load() error {
 }
 
 func (r *layerStore) Save() error {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if !r.IsReadWrite() {
 		return errors.Wrapf(ErrStoreIsReadOnly, "not allowed to modify the layer store at %q", r.layerspath())
 	}
