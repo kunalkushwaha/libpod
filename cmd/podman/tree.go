@@ -1,20 +1,27 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/containers/libpod/cmd/podman/libpodruntime"
+	"github.com/containers/libpod/libpod/image"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
 
+// treeTemplateParams stores info about each layer
+type treeTemplateParams struct {
+	ID   string
+	Size string
+	Tags []string
+}
+
 var (
-	treeDescription = "Displays the dependent layers of an image. The information is printed in tree format"
+	treeDescription = "Displays the dependent layers of an image. The information is printed as tree format"
 
 	treeCommand = cli.Command{
 		Name:                   "tree",
-		Usage:                  "Show dependent layers of a specified image in tree format",
+		Usage:                  "Show dependent images of a specified image",
 		Description:            treeDescription,
 		Action:                 treeCmd,
 		ArgsUsage:              "",
@@ -43,11 +50,37 @@ func treeCmd(c *cli.Context) error {
 		return err
 	}
 
-	out, err := image.Tree(context.Background())
+	imageInfo, err := image.Tree(getContext())
 	if err != nil {
-		return errors.Wrapf(err, "error getting dependencies of image %q", image.InputName)
+		return errors.Wrapf(err, "error getting history of image %q", image.InputName)
 	}
-	fmt.Println(out)
+
+	return generateTreeOutput(imageInfo)
+
+	//image.GetRootImage()
+	//GetChildrenList
+	//BuildTree
+	//PrintTree
+
+	/*_, err = image.Tree2(context.Background())
+	if err != nil {
+		return errors.Wrapf(err, "error getting history of image %q", image.InputName)
+	}*/
+
+	return nil
+}
+
+// generateTreeOutput generates the history based on the format given
+func generateTreeOutput(history []image.TreeImage) error {
+	if len(history) == 0 {
+		return nil
+	}
+	fmt.Println("length of history : ", len(history))
+	//TODO:
+	//Build Tree structure out of layer info of image
+	for _, h := range history {
+		fmt.Printf("ID: %s, ParentID: %s, OriginalID: %s, Size: %v, Details : %s \n", h.ID, h.ParentID, h.OrigID, h.Size, h.RepoTags)
+	}
 
 	return nil
 }

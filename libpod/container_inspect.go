@@ -11,6 +11,8 @@ func (c *Container) getContainerInspectData(size bool, driverData *inspect.Data)
 	runtimeInfo := c.state
 	spec := c.config.Spec
 
+	logrus.Debug("getContainerInspectData invoked")
+
 	// Process is allowed to be nil in the spec
 	args := []string{}
 	if config.Spec.Process != nil {
@@ -88,11 +90,11 @@ func (c *Container) getContainerInspectData(size bool, driverData *inspect.Data)
 		Mounts:          spec.Mounts,
 		Dependencies:    c.Dependencies(),
 		NetworkSettings: &inspect.NetworkSettings{
-			Bridge:                 "",    // TODO
-			SandboxID:              "",    // TODO - is this even relevant?
-			HairpinMode:            false, // TODO
-			LinkLocalIPv6Address:   "",    // TODO - do we even support IPv6?
-			LinkLocalIPv6PrefixLen: 0,     // TODO - do we even support IPv6?
+			Bridge:                 "",                     // TODO
+			SandboxID:              "",                     // TODO - is this even relevant?
+			HairpinMode:            false,                  // TODO
+			LinkLocalIPv6Address:   "",                     // TODO - do we even support IPv6?
+			LinkLocalIPv6PrefixLen: 0,                      // TODO - do we even support IPv6?
 			Ports:                  []ocicni.PortMapping{}, // TODO - maybe worth it to put this in Docker format?
 			SandboxKey:             "",                     // Network namespace path
 			SecondaryIPAddresses:   nil,                    // TODO - do we support this?

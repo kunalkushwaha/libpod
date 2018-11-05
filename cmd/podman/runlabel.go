@@ -125,7 +125,7 @@ func runlabelCmd(c *cli.Context) error {
 	}
 
 	pull := c.Bool("pull")
-	label := args[0]
+	//	label := args[0]
 
 	runlabelImage := args[1]
 
@@ -181,10 +181,11 @@ func runlabelCmd(c *cli.Context) error {
 		imageName = newImage.Names()[0]
 	}
 
-	runLabel, err := newImage.GetLabel(ctx, label)
-	if err != nil {
-		return err
-	}
+	//runLabel, err := newImage.GetLabel(ctx, label)
+	//if err != nil {
+	//	return err
+	//}
+	runLabel := "test"
 
 	// If no label to execute, we return
 	if runLabel == "" {

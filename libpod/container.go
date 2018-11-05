@@ -13,6 +13,7 @@ import (
 	"github.com/cri-o/ocicni/pkg/ocicni"
 	spec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/ulule/deepcopier"
 )
 
@@ -463,6 +464,7 @@ func (c *Container) User() string {
 func (c *Container) Dependencies() []string {
 	// Collect in a map first to remove dupes
 	dependsCtrs := map[string]bool{}
+	logrus.Debug("Dependencies invoked")
 
 	// First add all namespace containers
 	if c.config.IPCNsCtr != "" {
@@ -489,6 +491,7 @@ func (c *Container) Dependencies() []string {
 
 	// Add all generic dependencies
 	for _, id := range c.config.Dependencies {
+		logrus.Debug("Depends : ", id)
 		dependsCtrs[id] = true
 	}
 
