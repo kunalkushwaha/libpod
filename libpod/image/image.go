@@ -1205,9 +1205,6 @@ func (i *Image) TreeLayer() error {
 	}
 	fmt.Println("-------------------")
 
-	fmt.Println("--printLocalLayers--")
-	i.printLocalLayers()
-
 	return nil
 
 }
@@ -1225,20 +1222,32 @@ func getLayerToImageMapping(images []*Image) (map[string][]string, error) {
 	// 	for each image
 	// 		get all layers & put for Image ID
 	for _, image := range images {
-		info, err := image.imageInspectInfo(context.Background())
+		layerid := image.TopLayer()
+		imgLayer, err := image.imageruntime.store.Layer(layerid)
 		if err != nil {
 			return newImageLayerMap, err
 		}
-		for _, layerid := range info.Layers {
-			if len(image.Names()) > 0 {
-				//layer, _ := image.imageruntime.store.Layer(layerid)
-				//layer.UncompressedSize
-
-				//	fmt.Println(len(image.Names()), image.Names()[0])
-				newImageLayerMap[layerid] = append(newImageLayerMap[layerid], image.Names()[0])
+		for imgLayer != nil {
+			//fmt.Println(imgLayer.ID, image.Names())
+			if imgLayer.Parent == "" {
+				//	fmt.Println("break..", i)
+				break
 			}
+			//layer, _ := image.imageruntime.store.Layer(layerid)
+			//layer.UncompressedSize
+			name := ""
+			if len(image.Names()) > 0 {
+				name = image.Names()[0]
+			}
+			//	fmt.Println(len(image.Names()), image.Names()[0])
+			newImageLayerMap[imgLayer.ID] = append(newImageLayerMap[imgLayer.ID], name)
+			imgLayer = image.gParent(imgLayer.Parent)
 		}
 	}
+
+	//TODO: All layers from Image is added.
+	// Now Go through Layers and add which are missing.
+
 	return newImageLayerMap, nil
 }
 
