@@ -1144,13 +1144,9 @@ func humanSize(raw uint64) string {
 // Tree gets the history of an image and information about its layers
 func (i *Image) Tree(ctx context.Context) ([]TreeImage, error) {
 
-	return nil, i.TreeLayer()
+	//return nil, i.TreeLayer()
 	// Get the IDs of the images making up the history layers
 	// if the images exist locally in the store
-	images, err := i.imageruntime.GetImages()
-	if err != nil {
-		return nil, errors.Wrapf(err, "error getting images from store")
-	}
 
 	//TODO:
 	/*
@@ -1160,23 +1156,29 @@ func (i *Image) Tree(ctx context.Context) ([]TreeImage, error) {
 		- Find the start image.
 	*/
 
-	imageListMap, err := i.synthesizeImagesFromHistory(images, ctx)
+	imageListMap, err := i.LayerToImageMap(ctx)
 	if err != nil {
 		//FIXME: Better Error message.
 		return nil, err
 	}
 
-	roots := collectRoots(imageListMap)
+	flatmap, err := i.synthesizeImagesFromLayers(ctx, imageListMap)
+	if err != nil {
+		//FIXME: Better Error message.
+		return nil, err
+	}
 
-	imagesByParent := collectChildren(imageListMap)
+	//roots := collectRoots(imageListMap)
+	//	fmt.Println("Roots : ", roots)
+	//imagesByParent := collectChildren(imageListMap)
 
-	image, err := findImage(i.InputName, roots)
+	image, err := findImage(i.InputName, *flatmap)
 	if err != nil {
 		return nil, err
 	}
 	inputImageList := []TreeImage{image}
 
-	printTree(inputImageList, imagesByParent, "└─ ")
+	printTree(inputImageList, imageListMap, "└─ ")
 
 	return nil, err
 }
@@ -1196,7 +1198,7 @@ func (i *Image) TreeLayer() error {
 		return errors.Wrapf(err, "error getting images from store")
 	}
 	fmt.Println("--getLayerToImageMapping--")
-	mapImageLayer, err := getLayerToImageMapping(images)
+	mapImageLayer, err := i.getLayerToImageMapping(images)
 	if err != nil {
 		return err
 	}
@@ -1216,7 +1218,7 @@ type TreeLayer struct {
 	ParentID  string
 }
 
-func getLayerToImageMapping(images []*Image) (map[string][]string, error) {
+func (i *Image) getLayerToImageMapping(images []*Image) (map[string][]string, error) {
 	newImageLayerMap := make(map[string][]string)
 	// get all images,
 	// 	for each image
@@ -1247,8 +1249,92 @@ func getLayerToImageMapping(images []*Image) (map[string][]string, error) {
 
 	//TODO: All layers from Image is added.
 	// Now Go through Layers and add which are missing.
+	layers, _ := i.imageruntime.store.Layers()
+	for _, layer := range layers {
+		if _, ok := newImageLayerMap[layer.ID]; !ok {
+			newImageLayerMap[layer.ID] = []string{"<none>:<none>"}
+		}
+
+	}
 
 	return newImageLayerMap, nil
+}
+
+func (i *Image) LayerToImageMap(ctx context.Context) (map[string]*TreeImage, error) {
+
+	newLayerRoster := make(map[string]*TreeImage)
+	images, err := i.imageruntime.GetImages()
+	if err != nil {
+		return nil, errors.Wrapf(err, "error getting images from store")
+	}
+	for _, image := range images {
+		var previous string
+
+		layerid := image.TopLayer()
+		imgLayer, err := image.imageruntime.store.Layer(layerid)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("TOP Layer : %s", layerid[:12])
+		for imgLayer != nil {
+			var repoTag []string
+			if imgLayer.Parent == "" {
+				repoTag = image.Names()
+			}
+			//fmt.Println(imgLayer.ID, image.Names())
+			// if parent == "" , Set the Image Name else for layer dont.
+			existingLayer, ok := newLayerRoster[imgLayer.ID]
+			if !ok {
+				newLayerRoster[imgLayer.ID] = &TreeImage{
+					ID:       imgLayer.ID,
+					Size:     imgLayer.CompressedSize,
+					OrigID:   image.ID(),
+					ParentID: previous,
+					RepoTags: repoTag,
+				}
+			} else {
+				//fmt.Println(existingImage.OrigID, existingImage.Size)
+
+				if len(image.Names()) > 0 {
+					existingLayer.RepoTags = append(existingLayer.RepoTags, repoTag...)
+					//	fmt.Println(existingImage.RepoTags)
+				}
+			}
+			fmt.Printf(" : %s\n", repoTag)
+			if imgLayer.Parent == "" {
+				//	fmt.Println("break..", i)
+				break
+			}
+			previous = imgLayer.ID
+			imgLayer = image.gParent(imgLayer.Parent)
+
+			fmt.Printf("	Parent : %s", imgLayer.ID[:12])
+		}
+	}
+	return newLayerRoster, nil
+}
+
+func (i *Image) synthesizeImagesFromLayers(ctx context.Context, newLayerRoster map[string]*TreeImage) (*[]TreeImage, error) {
+	var (
+		tree []TreeImage
+	)
+	for _, image := range newLayerRoster {
+		if len(image.RepoTags) == 0 {
+			image.RepoTags = []string{"<none>:<none>"}
+		} else {
+			visited := make(map[string]bool)
+			for _, tag := range image.RepoTags {
+				visited[tag] = true
+			}
+			image.RepoTags = []string{}
+			for tag, _ := range visited {
+				image.RepoTags = append(image.RepoTags, tag)
+			}
+		}
+		tree = append(tree, *image)
+	}
+
+	return &tree, nil
 }
 
 func (i *Image) printLocalLayers() error {
@@ -1412,7 +1498,7 @@ func collectRoots(images *[]TreeImage) []TreeImage {
 	var roots []TreeImage
 	for _, image := range *images {
 		if image.ParentID == "" {
-			//fmt.Println("roots appended : ", image.ID)
+			fmt.Println("roots appended : ", image.ID, image.RepoTags)
 			roots = append(roots, image)
 		} else {
 			//	fmt.Println("not appended : ", image.ParentID)
@@ -1422,7 +1508,7 @@ func collectRoots(images *[]TreeImage) []TreeImage {
 	return roots
 }
 
-func printTree(roots []TreeImage, imagesByParent map[string][]TreeImage, prefix string) {
+func printTree(roots []TreeImage, imagesByParent map[string]*TreeImage, prefix string) {
 
 	//	var length = len(roots)
 	//	if length > 1 {
@@ -1434,9 +1520,9 @@ func printTree(roots []TreeImage, imagesByParent map[string][]TreeImage, prefix 
 			details = image.CreatedBy[:40]
 		}
 
-		fmt.Println(prefix, image.RepoTags, image.OrigID[:9], image.Size, details)
-		if subimages, exists := imagesByParent[image.ID]; exists {
-			printTree(subimages, imagesByParent, "  ├─ ")
+		fmt.Println(prefix, image.RepoTags, image.ID[:9], image.Size, details)
+		if subimages, exists := imagesByParent[image.ParentID]; exists {
+			printTree([]TreeImage{*subimages}, imagesByParent, "  ├─ ")
 		}
 	}
 	//}
@@ -1447,6 +1533,7 @@ func findImage(name string, images []TreeImage) (TreeImage, error) {
 		for _, repo := range image.RepoTags {
 			//		fmt.Println(repo)
 			if strings.Contains(repo, name) {
+				fmt.Println(image)
 				return image, nil
 			}
 		}
