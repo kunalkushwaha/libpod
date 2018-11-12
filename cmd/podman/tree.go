@@ -50,7 +50,7 @@ func treeCmd(c *cli.Context) error {
 		return err
 	}
 
-	imageInfo, err := image.Tree(getContext())
+	imageInfo, err := image.Tree(getContext(), args[0])
 	if err != nil {
 		return errors.Wrapf(err, "error getting history of image %q", image.InputName)
 	}

@@ -1142,246 +1142,95 @@ func humanSize(raw uint64) string {
 }
 
 // Tree gets the history of an image and information about its layers
-func (i *Image) Tree(ctx context.Context) ([]TreeImage, error) {
+func (i *Image) Tree(ctx context.Context, imageName string) ([]TreeImage, error) {
 
-	//return nil, i.TreeLayer()
-	// Get the IDs of the images making up the history layers
-	// if the images exist locally in the store
-
-	//TODO:
-	/*
-		- Get all images
-		- Build a map of dependencies of each image with help of its history.
-			- use the own id , so missing-id can be fixed.
-		- Find the start image.
-	*/
-
-	imageListMap, err := i.LayerToImageMap(ctx)
-	if err != nil {
-		//FIXME: Better Error message.
-		return nil, err
-	}
-
-	flatmap, err := i.synthesizeImagesFromLayers(ctx, imageListMap)
-	if err != nil {
-		//FIXME: Better Error message.
-		return nil, err
-	}
-
-	//roots := collectRoots(imageListMap)
-	//	fmt.Println("Roots : ", roots)
-	//imagesByParent := collectChildren(imageListMap)
-
-	image, err := findImage(i.InputName, *flatmap)
+	layerMap, err := i.layerToImageMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	inputImageList := []TreeImage{image}
+	layerMap, err = i.addImageToLayerInfo(ctx, layerMap)
 
-	printTree(inputImageList, imageListMap, "└─ ")
+	repoTag, err := i.MatchRepoTag(imageName)
+	if err != nil {
+		return nil, err
+	}
+	// Get the image top layer and then parse as per parent
+	layer := i.TopLayer()
+	dependencyList := returnDependencyTree(layerMap, repoTag, layer)
+	printTree(dependencyList)
 
 	return nil, err
 }
 
-func (i *Image) TreeLayer() error {
-	//TODO:
-	// Get Top layer of Image.
-	// parse to dept of root layer.
-	fmt.Println("--getRootLayer--")
-	_, _ = i.getRootLayer()
-	fmt.Println("-------------------")
+func printTree(treeStack []TreeImage) {
 
-	// From root layer, map to Image, If no image found, show layerid with <none>:<none>
-	// Get Inspect Info and extract the layers.
-	images, err := i.imageruntime.GetImages()
-	if err != nil {
-		return errors.Wrapf(err, "error getting images from store")
+	//
+	prefixSpace := 0
+	for i := len(treeStack) - 1; i >= 0; i-- {
+		for p := 0; p < prefixSpace; p++ {
+			fmt.Printf(" ")
+		}
+		fmt.Printf("└─ ID : %s, Tag: %s , VirtualSize  : %s\n", treeStack[i].ID[:12], treeStack[i].RepoTags, humanSize(uint64(treeStack[i].Size)))
+		prefixSpace++
 	}
-	fmt.Println("--getLayerToImageMapping--")
-	mapImageLayer, err := i.getLayerToImageMapping(images)
-	if err != nil {
-		return err
-	}
-	for key, val := range mapImageLayer {
-		fmt.Printf("Layer : %s, Images : %v \n", key, val)
-	}
-	fmt.Println("-------------------")
-
-	return nil
-
 }
 
-type TreeLayer struct {
-	ID        string
-	Size      uint64
-	RefImages []string
-	ParentID  string
-}
-
-func (i *Image) getLayerToImageMapping(images []*Image) (map[string][]string, error) {
-	newImageLayerMap := make(map[string][]string)
-	// get all images,
-	// 	for each image
-	// 		get all layers & put for Image ID
-	for _, image := range images {
-		layerid := image.TopLayer()
-		imgLayer, err := image.imageruntime.store.Layer(layerid)
-		if err != nil {
-			return newImageLayerMap, err
-		}
-		for imgLayer != nil {
-			//fmt.Println(imgLayer.ID, image.Names())
-			if imgLayer.Parent == "" {
-				//	fmt.Println("break..", i)
-				break
-			}
-			//layer, _ := image.imageruntime.store.Layer(layerid)
-			//layer.UncompressedSize
-			name := ""
-			if len(image.Names()) > 0 {
-				name = image.Names()[0]
-			}
-			//	fmt.Println(len(image.Names()), image.Names()[0])
-			newImageLayerMap[imgLayer.ID] = append(newImageLayerMap[imgLayer.ID], name)
-			imgLayer = image.gParent(imgLayer.Parent)
-		}
-	}
-
-	//TODO: All layers from Image is added.
-	// Now Go through Layers and add which are missing.
+func (i *Image) layerToImageMap(ctx context.Context) (map[string]*TreeImage, error) {
+	layerMap := make(map[string]*TreeImage)
 	layers, _ := i.imageruntime.store.Layers()
 	for _, layer := range layers {
-		if _, ok := newImageLayerMap[layer.ID]; !ok {
-			newImageLayerMap[layer.ID] = []string{"<none>:<none>"}
+		existingLayer, ok := layerMap[layer.ID]
+		if !ok {
+			layerMap[layer.ID] = &TreeImage{
+				ID:       layer.ID,
+				Size:     layer.CompressedSize,
+				ParentID: layer.Parent,
+			}
+		} else {
+			return nil, fmt.Errorf("duplicate %s layer found in image store", existingLayer.ID)
 		}
-
 	}
-
-	return newImageLayerMap, nil
+	return layerMap, nil
 }
 
-func (i *Image) LayerToImageMap(ctx context.Context) (map[string]*TreeImage, error) {
-
-	newLayerRoster := make(map[string]*TreeImage)
+func (i *Image) addImageToLayerInfo(ctx context.Context, layerMap map[string]*TreeImage) (map[string]*TreeImage, error) {
 	images, err := i.imageruntime.GetImages()
 	if err != nil {
 		return nil, errors.Wrapf(err, "error getting images from store")
 	}
+
 	for _, image := range images {
-		var previous string
 
 		layerid := image.TopLayer()
 		imgLayer, err := image.imageruntime.store.Layer(layerid)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("TOP Layer : %s", layerid[:12])
+
 		for imgLayer != nil {
-			var repoTag []string
-			if imgLayer.Parent == "" {
-				repoTag = image.Names()
-			}
-			//fmt.Println(imgLayer.ID, image.Names())
-			// if parent == "" , Set the Image Name else for layer dont.
-			existingLayer, ok := newLayerRoster[imgLayer.ID]
+			existingLayer, ok := layerMap[imgLayer.ID]
 			if !ok {
-				newLayerRoster[imgLayer.ID] = &TreeImage{
-					ID:       imgLayer.ID,
-					Size:     imgLayer.CompressedSize,
-					OrigID:   image.ID(),
-					ParentID: previous,
-					RepoTags: repoTag,
-				}
+				return nil, fmt.Errorf("layer %s not found ", imgLayer.ID)
 			} else {
-				//fmt.Println(existingImage.OrigID, existingImage.Size)
-
-				if len(image.Names()) > 0 {
-					existingLayer.RepoTags = append(existingLayer.RepoTags, repoTag...)
-					//	fmt.Println(existingImage.RepoTags)
-				}
+				existingLayer.OrigID = image.ID()
+				names := image.Names()
+				existingLayer.RepoTags = append(existingLayer.RepoTags, names...)
 			}
-			fmt.Printf(" : %s\n", repoTag)
-			if imgLayer.Parent == "" {
-				//	fmt.Println("break..", i)
-				break
-			}
-			previous = imgLayer.ID
-			imgLayer = image.gParent(imgLayer.Parent)
-
-			fmt.Printf("	Parent : %s", imgLayer.ID[:12])
+			imgLayer = image.getLayer(imgLayer.Parent)
 		}
 	}
-	return newLayerRoster, nil
-}
-
-func (i *Image) synthesizeImagesFromLayers(ctx context.Context, newLayerRoster map[string]*TreeImage) (*[]TreeImage, error) {
-	var (
-		tree []TreeImage
-	)
-	for _, image := range newLayerRoster {
-		if len(image.RepoTags) == 0 {
-			image.RepoTags = []string{"<none>:<none>"}
-		} else {
-			visited := make(map[string]bool)
-			for _, tag := range image.RepoTags {
-				visited[tag] = true
-			}
-			image.RepoTags = []string{}
-			for tag, _ := range visited {
-				image.RepoTags = append(image.RepoTags, tag)
-			}
-		}
-		tree = append(tree, *image)
-	}
-
-	return &tree, nil
+	return layerMap, nil
 }
 
 func (i *Image) printLocalLayers() error {
 	layers, _ := i.imageruntime.store.Layers()
 	for _, layer := range layers {
-		fmt.Println(layer.ID, layer.Parent, layer.Names, layer.Metadata)
-
+		fmt.Println(layer.ID, layer.Parent)
 	}
 	return nil
 }
 
-func (i *Image) getRootLayer() (*storage.Layer, error) {
-
-	images, err := i.imageruntime.GetImages()
-	if err != nil {
-		return nil, err
-	}
-
-	imgLayer, err := i.imageruntime.store.Layer(i.TopLayer())
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println("Top Layer : ", imgLayer.ID)
-	for imgLayer != nil {
-		if imgLayer.Parent == "" {
-			break
-		}
-		fmt.Printf("%s : %s ", imgLayer.ID, imgLayer.Parent)
-
-		//TODO:
-		// - Get find Image associated with this layer,
-		// If Available - Show Image Name & Image ID else show layerid.
-
-		imgs := getImageOfTopLayer(images, imgLayer.ID)
-		for _, img := range imgs {
-			im, err := i.imageruntime.getImage(img)
-			if err == nil {
-				fmt.Printf(": %s ", im.Names())
-			}
-		}
-		fmt.Println("")
-		imgLayer = i.gParent(imgLayer.Parent)
-	}
-	return imgLayer, nil
-}
-
-func (i *Image) gParent(layerID string) *storage.Layer {
+func (i *Image) getLayer(layerID string) *storage.Layer {
 	layers, err := i.imageruntime.store.Layers()
 	if err != nil {
 		return nil
@@ -1395,148 +1244,36 @@ func (i *Image) gParent(layerID string) *storage.Layer {
 	return nil
 }
 
-func (i *Image) synthesizeImagesFromHistory(images []*Image, ctx context.Context) (*[]TreeImage, error) {
-
-	newImageRoster := make(map[string]*TreeImage)
-	var (
-		tree []TreeImage
-	)
-	for _, image := range images {
-		sizeCount := 1
-
-		img, err := image.toImageRef(ctx)
-		if err != nil {
-			return nil, err
-		}
-		oci, err := img.OCIConfig(ctx)
-		if err != nil {
-			return nil, err
-		}
-		imageIDs := []string{image.ID()}
-		if err := image.historyLayerIDs(image.TopLayer(), images, &imageIDs); err != nil {
-			return nil, errors.Wrap(err, "error getting image IDs for layers in history")
+func returnDependencyTree(layerMap map[string]*TreeImage, repoTag string, layerID string) []TreeImage {
+	var treeStack []TreeImage
+	previous := TreeImage{}
+	layerInfo, ok := layerMap[layerID]
+	for ok {
+		appended := false
+		// First loop
+		if len(previous.RepoTags) == 0 {
+			previous.ID = layerInfo.ID
+			previous.RepoTags = []string{repoTag}
 		}
 
-		var (
-			previous   string
-			size       int64
-			imgIDCount = 0
-			imageID    string
-		)
-		for i := len(oci.History) - 1; i >= 0; i-- {
-			if imgIDCount < len(imageIDs) {
-				imageID = imageIDs[imgIDCount]
-				//	fmt.Println("Image ID Count: ", len(imageIDs), imageID)
-				imgIDCount++
-			} else {
-				imageID = "<missing>"
-			}
-			if !oci.History[i].EmptyLayer {
-				//	fmt.Println("Len : ", len((img.LayerInfos())), sizeCount)
-				size = img.LayerInfos()[len(img.LayerInfos())-sizeCount].Size
-				sizeCount++
-			}
-			if imageID == "<missing>" {
-				continue
-			}
-			existingImage, ok := newImageRoster[imageID]
-			if !ok {
-				newImageRoster[imageID] = &TreeImage{
-					ID:        imageID,
-					Created:   oci.History[i].Created.Unix(),
-					CreatedBy: oci.History[i].CreatedBy,
-					Size:      size,
-					OrigID:    imageID,
-					ParentID:  previous,
-					RepoTags:  image.Names(),
-				}
-			} else {
-				//fmt.Println(existingImage.OrigID, existingImage.Size)
+		if previous.RepoTags[0] == layerInfo.RepoTags[0] {
+			previous.Size = previous.Size + layerInfo.Size
+		} else if layerInfo.Size != 0 {
+			treeStack = append(treeStack, previous)
+			previous = TreeImage{}
+			previous.ID = layerInfo.ID
+			previous.RepoTags = []string{layerInfo.RepoTags[0]}
 
-				if len(image.Names()) > 0 {
-					existingImage.RepoTags = append(existingImage.RepoTags, image.Names()...)
-					//	fmt.Println(existingImage.RepoTags)
-				}
-			}
-			previous = imageID
+		}
+
+		ok = false
+		if layerInfo.ParentID != "" {
+			layerInfo, ok = layerMap[layerInfo.ParentID]
+		} else if !appended {
+			// Add the last layer, which is not added
+			treeStack = append(treeStack, previous)
 		}
 	}
 
-	for _, image := range newImageRoster {
-		if len(image.RepoTags) == 0 {
-			image.RepoTags = []string{"<none>:<none>"}
-		} else {
-			visited := make(map[string]bool)
-			for _, tag := range image.RepoTags {
-				visited[tag] = true
-			}
-			image.RepoTags = []string{}
-			for tag, _ := range visited {
-				image.RepoTags = append(image.RepoTags, tag)
-			}
-		}
-		tree = append(tree, *image)
-	}
-
-	return &tree, nil
-}
-
-func collectChildren(images *[]TreeImage) map[string][]TreeImage {
-	var imagesByParent = make(map[string][]TreeImage)
-	for _, image := range *images {
-		if children, exists := imagesByParent[image.ParentID]; exists {
-			imagesByParent[image.ParentID] = append(children, image)
-		} else {
-			imagesByParent[image.ParentID] = []TreeImage{image}
-		}
-	}
-
-	return imagesByParent
-}
-
-func collectRoots(images *[]TreeImage) []TreeImage {
-	var roots []TreeImage
-	for _, image := range *images {
-		if image.ParentID == "" {
-			fmt.Println("roots appended : ", image.ID, image.RepoTags)
-			roots = append(roots, image)
-		} else {
-			//	fmt.Println("not appended : ", image.ParentID)
-		}
-	}
-
-	return roots
-}
-
-func printTree(roots []TreeImage, imagesByParent map[string]*TreeImage, prefix string) {
-
-	//	var length = len(roots)
-	//	if length > 1 {
-	for _, image := range roots {
-		details := ""
-		if len(image.CreatedBy) < 40 {
-			details = image.CreatedBy
-		} else {
-			details = image.CreatedBy[:40]
-		}
-
-		fmt.Println(prefix, image.RepoTags, image.ID[:9], image.Size, details)
-		if subimages, exists := imagesByParent[image.ParentID]; exists {
-			printTree([]TreeImage{*subimages}, imagesByParent, "  ├─ ")
-		}
-	}
-	//}
-}
-
-func findImage(name string, images []TreeImage) (TreeImage, error) {
-	for _, image := range images {
-		for _, repo := range image.RepoTags {
-			//		fmt.Println(repo)
-			if strings.Contains(repo, name) {
-				fmt.Println(image)
-				return image, nil
-			}
-		}
-	}
-	return TreeImage{}, fmt.Errorf("no image found : %s", name)
+	return treeStack
 }
