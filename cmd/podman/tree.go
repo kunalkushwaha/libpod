@@ -43,7 +43,7 @@ func treeCmd(c *cli.Context) error {
 		return err
 	}
 
-	out, err := image.Tree(context.Background(), args[0])
+	out, err := image.Tree(context.Background())
 	if err != nil {
 		return errors.Wrapf(err, "error getting dependencies of image %q", image.InputName)
 	}
